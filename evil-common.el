@@ -2927,6 +2927,52 @@ should be left-aligned for left justification."
       (goto-char (point-min))
       (back-to-indentation))))
 
-(provide 'evil-common)
+;;; Repl
 
+(defun evil-repl-mode-p ()
+  "Whetever current buffer is a repl.
+Customize evil-repl-modes with wanted modes."
+  (assoc major-mode evil-repl-modes))
+
+(defun evil-repl-marker ()
+  "Returns start of input area for current repl-buffer."
+  (save-excursion
+    (let* ((repl-marker (cdr (assoc major-mode evil-repl-modes)))
+           (repl-regexp (concat "^.*?" repl-marker)))
+      (end-of-buffer)
+      (search-backward-regexp repl-regexp)
+      (match-end 0))))
+
+(defun evil-goto-repl ()
+  "Goto end of repl-marker and the start of the input-area."
+  (goto-char (evil-repl-marker)))
+
+(defun evil-goto-repl-end ()
+  "Goto end of input-area."
+  (goto-char (point-max)))
+
+(defun evil-outside-repl-p ()
+  "Return if buffer is a repl-buffer and point 
+is outside of input-area."
+  (and (evil-repl-mode-p) (< (point) (evil-repl-marker))))
+
+(defun evil-repl-line-p ()
+  "Return if buffer is a repl-buffer and point
+is on the same line as the marker."
+  (save-excursion
+    (beginning-of-line)
+    (let ((line-pos (point)))
+      (evil-goto-repl)
+      (beginning-of-line)
+      (and (evil-repl-mode-p) (= line-pos (point))))))
+
+(defun evil-repl-area (beg end &rest args)
+  "Return a tuple with adjusted beg and end position.
+If buffer is a a repl-buffer and every\"args\" is true.
+Else return original values."
+  (if (and (evil-outside-repl-p) (every #'identity args))
+      (list (evil-repl-marker) (point-max))
+    (list beg end)))
+
+(provide 'evil-common)
 ;;; evil-common.el ends here

@@ -602,6 +602,17 @@ overridden."
 
 (add-hook 'after-load-functions #'evil-update-pending-maps)
 
+(defcustom evil-repl-modes
+  '((nrepl . "> ")
+    (erc-mode . "> ")
+    (eshell-mode . "$ "))
+  "A list of major-modes that should be handled as repls.
+The string marks where the start of input area should be.
+For now expects input area to be at the last line of buffer.
+Most of the standard operators have a modified behaviour."
+  :group 'evil
+  :type '(alist :key-type symbol :value-type string))
+
 (defcustom evil-intercept-maps
   '((edebug-mode-map . nil))
   "Keymaps that should intercept Evil maps.

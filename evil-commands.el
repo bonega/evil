@@ -134,7 +134,9 @@ of the line or the buffer; just return nil."
 (evil-define-motion evil-beginning-of-line ()
   "Move the cursor to the beginning of the current line."
   :type exclusive
-  (move-beginning-of-line nil))
+  (if (evil-repl-line-p)
+      (evil-goto-repl)
+      (move-beginning-of-line nil)))
 
 (evil-define-motion evil-end-of-line (count)
   "Move the cursor to the end of the current line.
@@ -181,7 +183,9 @@ if it is not the first event."
 (evil-define-motion evil-first-non-blank ()
   "Move the cursor to the first non-blank character of the current line."
   :type exclusive
-  (evil-narrow-to-line (back-to-indentation)))
+  (evil-narrow-to-line (if (evil-repl-mode-p)
+                           (evil-goto-repl)
+                         (back-to-indentation))))
 
 (evil-define-motion evil-last-non-blank (count)
   "Move the cursor to the last non-blank character of the current line.
@@ -1041,7 +1045,8 @@ or line COUNT to the top of the window."
    ((eq type 'block)
     (evil-yank-rectangle beg end register yank-handler))
    ((eq type 'line)
-    (evil-yank-lines beg end register yank-handler))
+    (destructuring-bind (beg end) (evil-repl-area beg end (evil-repl-line-p))
+      (evil-yank-characters beg end register yank-handler)))
    (t
     (evil-yank-characters beg end register yank-handler))))
 
@@ -1056,13 +1061,15 @@ or line COUNT to the top of the window."
   "Delete text from BEG to END with TYPE.
 Save in REGISTER or in the kill-ring with YANK-HANDLER."
   (interactive "<R><x><y>")
-  (evil-yank beg end type register yank-handler)
-  (if (eq type 'block)
-      (evil-apply-on-block #'delete-region beg end)
-    (delete-region beg end))
+  (destructuring-bind (beg end) (evil-repl-area beg end (eq type 'line)) 
+    (evil-yank beg end type register yank-handler)
+    (if (eq type 'block)
+        (evil-apply-on-block #'delete-region beg end)
+      (delete-region beg end)))
   ;; place cursor on beginning of line
   (when (and (evil-called-interactively-p)
-             (eq type 'line))
+             (eq type 'line)
+             (not (evil-repl-mode-p)))
     (evil-first-non-blank)))
 
 (evil-define-operator evil-delete-line (beg end type register yank-handler)
@@ -1130,11 +1137,18 @@ of the block."
   (interactive "<R><x><y>")
   (let ((delete-func (or delete-func #'evil-delete))
         (nlines (1+ (- (line-number-at-pos end)
-                       (line-number-at-pos beg)))))
+                       (line-number-at-pos beg))))
+        (beg (car (evil-repl-area beg end)))
+        (end (cadr (evil-repl-area beg end))))
+
     (funcall delete-func beg end type register yank-handler)
     (cond
      ((eq type 'line)
-      (evil-open-above 1))
+      (if (evil-repl-mode-p)
+          (progn
+            (evil-goto-repl)
+            (evil-insert 1))
+        (evil-open-above 1)))
      ((eq type 'block)
       (evil-insert 1 nlines))
      (t
@@ -1371,6 +1385,8 @@ The return value is the yanked text."
                                             0 'yank-handler text)))))
              (opoint (point)))
         (when text
+          (when (evil-outside-repl-p)
+            (evil-goto-repl))
           (if (functionp yank-handler)
               (let ((evil-paste-count count)
                     ;; for non-interactive use
@@ -1415,6 +1431,8 @@ The return value is the yanked text."
                                             0 'yank-handler text)))))
              (opoint (point)))
         (when text
+          (when (evil-outside-repl-p)
+            (evil-goto-repl-end))
           (if (functionp yank-handler)
               (let ((evil-paste-count count)
                     ;; for non-interactive use
@@ -1439,8 +1457,9 @@ The return value is the yanked text."
                           (point))) ; end
               (evil-set-marker ?\[ beg)
               (evil-set-marker ?\] (1- (point)))
-              (when (evil-normal-state-p)
-                (evil-move-cursor-back)))))
+              (cond
+               ((evil-normal-state-p) (evil-move-cursor-back))
+               ((evil-repl-mode-p) (evil-goto-repl-end))))))
         (when register
           (setq evil-last-paste nil))
         (and (> (length text) 0) text)))))
@@ -1680,6 +1699,8 @@ lines.  This is the default behaviour for Visual-state insertion."
                                         (current-column)
                                         vcount))
           evil-insert-skip-empty-lines skip-empty-lines)
+    (when (evil-outside-repl-p)
+      (evil-goto-repl))
     (evil-insert-state 1)))
 
 (defun evil-append (count &optional vcount skip-empty-lines)
@@ -1772,9 +1793,11 @@ line.  The insertion will be repeated COUNT times.  If VCOUNT is
 non nil it should be number > 0. The insertion will be repeated
 in the next VCOUNT - 1 lines below the current one."
   (interactive "p")
-  (if evil-auto-indent
-      (back-to-indentation)
-    (evil-move-beginning-of-line))
+  (if (evil-repl-mode-p)
+      (evil-goto-repl)
+    (if evil-auto-indent
+        (back-to-indentation)
+      (evil-move-beginning-of-line)))
   (setq evil-insert-count count
         evil-insert-lines nil
         evil-insert-vcount
@@ -1791,7 +1814,9 @@ The insertion will be repeated COUNT times.  If VCOUNT is non nil
 it should be number > 0. The insertion will be repeated in the
 next VCOUNT - 1 lines below the current one."
   (interactive "p")
-  (evil-move-end-of-line)
+  (if (evil-outside-repl-p)
+      (evil-goto-repl-end)
+    (evil-move-end-of-line))
   (setq evil-insert-count count
         evil-insert-lines nil
         evil-insert-vcount
